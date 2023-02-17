@@ -1,7 +1,9 @@
 import random
-
-from Memories import DifferentiableNeuralDictionary, ReplayBuffer
+import numpy as np
+from Memories import Q_Memory, ReplayBuffer
 from tqdm import tqdm
+from keras.optimizers import Adam
+from keras.losses import MSE
 
 
 class NeuralEpisodicControl:
@@ -9,7 +11,11 @@ class NeuralEpisodicControl:
         self.env = kwargs['env']
         self.q_network = kwargs['q_network']
         self.replay_buffer = ReplayBuffer(50000)
-        self.memory = {}
+        self.memory = Q_Memory(kwargs['actions'],
+                               mem_size=kwargs['dnd_size'],
+                               key_size=kwargs['key_size'],
+                               k=kwargs['k'],
+                               tau=kwargs['tau'])
 
         # params
         self.n_steps = kwargs['n_steps']
@@ -24,6 +30,9 @@ class NeuralEpisodicControl:
         self.eps_end = kwargs['eps_end']
 
         self.batch_size = kwargs['batch_size']
+
+        self.optimizer = Adam(lr=1e-3)
+        self.loss_fn = MSE
 
         # stats
         self.rewards = []
@@ -48,7 +57,7 @@ class NeuralEpisodicControl:
         while True:
             # n_steps loop
             g_n = 0
-            for n in range(self.n_steps):
+            for n in range(1, self.n_steps + 1):
 
                 if player:
                     # agent turn
@@ -78,19 +87,45 @@ class NeuralEpisodicControl:
                 if done:
                     break
 
-            # Calculate Bellman Target for action u (first action)
-            bellman_target = g_n + (self.alpha ** n) * min(self.memory.query(next_state, action))
+            actions = self.env.get_legal_moves()
+            if actions:
+                # Calculate Bellman Target for action u (first action)
+                attention = self.memory.get_attention(next_state, actions)
+                bellman_target = g_n + (self.alpha ** n) * np.min(attention)
+            else:
+                # if no actions query returns 0
+                bellman_target = g_n
+
+            self.memory.insert(state, bellman_target)
+
+            # Add to replay memory
+            self.replay_buffer.enqueue((first_state, first_action, bellman_target, state))
 
             # Tabular Update
+            self.memory.tabular_update(first_action, g_n)
+
+            self.learn()
 
             if done:
                 break
 
     def learn(self):
-        pass
+        if len(self.replay_buffer) < self.batch_size:
+            return
+
+        batch_initial_state, batch_action, batch_reward, batch_next_state = self.get_transitions()
+        predicted_q_values = self.memory.get_attention(batch_action)
+
+
+
 
     def select_action(self):
         pass
+
+    def get_transitions(self):
+        transitions = self.replay_buffer.sample(self.batch_size)
+        states, f_actions, q_values, actions = list(zip(*transitions))
+        return np.stack(states), list(f_actions), np.array(q_values), list(actions)
 
 
 if __name__ == '__main__':

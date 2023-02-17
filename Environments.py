@@ -52,7 +52,7 @@ class Chess:
     def encode_board(self):
         pieces = self.board.epd().split(' ', 1)[0]
         rows = pieces.split('/')
-        np_board = np.zeros((12, 8, 8))
+        np_board = np.zeros((8, 8, 12))
         for i, row, in enumerate(rows):
             j = 0
             for item in row:
@@ -62,11 +62,10 @@ class Chess:
                     piece = self.pieces_map[item.lower()]
                     if item.islower():
                         piece += 6
-                    np_board[piece][i][j] = 1
+                    np_board[i][j][piece] = 1
                     j += 1
         return np_board
 
 
 if __name__ == '__main__':
     pass
-

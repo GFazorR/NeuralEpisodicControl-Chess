@@ -94,7 +94,9 @@ class DifferentiableNeuralDictionary:
 
 
 class Q_Memory:
-    def __init__(self, actions, mem_size, key_size, k, tau):
+    def __init__(self, q_network, actions, mem_size, key_size, k, tau, gamma):
+        # TODO move q_network here
+        self.gamma = gamma
         self.memory = dict()
         self.tau = tau
         for action in actions:
@@ -102,12 +104,18 @@ class Q_Memory:
                                                                  key_size=key_size,
                                                                  tau=tau,
                                                                  k=k)
-    def query(self, state, action):
-        pass
+
+    def get_attention(self, state, actions):
+        attention = np.array(len(actions))
+        for i, action in enumerate(actions):
+            attention[i] = self.memory[action].attend(state)
+        return attention
 
     def insert(self, state, action, value):
         self.memory[action].write(state, value)
 
+    def tabular_update(self, first_action, g_n):
+        self.memory[first_action].tabular_update(g_n, self.gamma)
 
 
 if __name__ == '__main__':
