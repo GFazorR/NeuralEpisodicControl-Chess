@@ -21,7 +21,8 @@ class ReplayBuffer:
 
 
 class DifferentiableNeuralDictionary:
-    def __init__(self, size, key_size, k=50):
+    def __init__(self, size, key_size, tau=.5, k=50):
+        self.tau = tau
         self.k = k
         self.max_size = size
         self.key_size = key_size
@@ -40,20 +41,22 @@ class DifferentiableNeuralDictionary:
     def write(self, key, value):
         # TODO Key already exists
         # index = (self.embeddings == key).all(axis=1).nonzero()
-        if self.current_size < self.max_size:
-            self.embeddings[self.current_size + 1] = key
-            self.q_values[self.current_size + 1] = value
-            self.current_size += 1
-        else:
-            index = np.argmin(self.lru)
-            self.embeddings[index] = key
-            self.q_values[index] = value
-            self.lru[index] = self.tm
+        distance = self.tree.query(key, k=1, return_distance=False)
+        if distance < self.tau:
+            if self.current_size < self.max_size:
+                self.embeddings[self.current_size + 1] = key
+                self.q_values[self.current_size + 1] = value
+                self.current_size += 1
+            else:
+                index = np.argmin(self.lru)
+                self.embeddings[index] = key
+                self.q_values[index] = value
+                self.lru[index] = self.tm
 
-        if self.is_queryable():
-            self.rebuild_tree()
+            if self.is_queryable():
+                self.rebuild_tree()
 
-        self.tm += .01
+            self.tm += .01
 
     def lookup(self, key):
         if not self.is_queryable():
@@ -91,8 +94,20 @@ class DifferentiableNeuralDictionary:
 
 
 class Q_Memory:
-    def __init__(self, actions, mem_size):
+    def __init__(self, actions, mem_size, key_size, k, tau):
+        self.memory = dict()
+        self.tau = tau
+        for action in actions:
+            self.memory[action] = DifferentiableNeuralDictionary(size=mem_size,
+                                                                 key_size=key_size,
+                                                                 tau=tau,
+                                                                 k=k)
+    def query(self, state, action):
         pass
+
+    def insert(self, state, action, value):
+        self.memory[action].write(state, value)
+
 
 
 if __name__ == '__main__':

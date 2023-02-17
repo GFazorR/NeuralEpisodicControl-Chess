@@ -29,57 +29,62 @@ class NeuralEpisodicControl:
         self.rewards = []
 
     def train(self, episodes=1000):
+        done = False
         for i in tqdm(range(episodes), total=episodes):
-            observation = self.env.reset()
-            opponent_starts = random.choice([True, False])
-            if opponent_starts:
+            player = random.choice([True, False])
+            observation = self.env.reset(player, not player)
+            if not player:
                 action = random.choice(self.env.get_legal_moves())
-                observation, _, _ = self.env.step(action)
+                observation, _, done = self.env.step(action)
 
-            self.rewards.append(self.play_episode(observation, i, opponent_starts))
+            self.rewards.append(self.play_episode(observation, i, player, done))
 
     def test(self):
         pass
 
-    def play_episode(self, state, episode, opponent_starts):
+    def play_episode(self, state, episode, player, done):
         steps = 0
         cumulative_reward = 0
         while True:
             # n_steps loop
             g_n = 0
             for n in range(self.n_steps):
-                # agent turn
-                action = self.select_action(state, episode)
-                # save first state/action
-                if n == 0:
-                    first_action = action
-                    first_state = state
 
-                next_state, reward, done = self.env.step(action, opponent_starts)
+                if player:
+                    # agent turn
+
+                    action = self.select_action(state, episode)
+                    # save first state/action
+                    if n == 0:
+                        first_action = action
+                        first_state = state
+
+                    next_state, reward, done = self.env.step(action, player)
+                    player = not player
 
                 # opponent turn
                 if not done:
                     opponent_action = self.select_action(state, episode)
-                    next_state, reward, done = self.env.step(action, opponent_starts)
+                    next_state, reward, done = self.env.step(opponent_action, player)
+                    player = not player
 
                 cumulative_reward += reward
                 steps += 1
 
                 # cumulative discounted reward
                 g_n += (self.gamma ** n) * reward
+                state = next_state
+
                 if done:
                     break
 
-            # Calculate Bellman Target
+            # Calculate Bellman Target for action u (first action)
+            bellman_target = g_n + (self.alpha ** n) * min(self.memory.query(next_state, action))
 
             # Tabular Update
 
-
             if done:
                 break
-
-
-
 
     def learn(self):
         pass

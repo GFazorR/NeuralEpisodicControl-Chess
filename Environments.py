@@ -25,7 +25,9 @@ class Chess:
         reward, done = self.game_over(player)
         return self.encode_board(), reward, done
 
-    def reset(self):
+    def reset(self, player_1, player_2):
+        self.player_1 = player_1
+        self.player_2 = player_2
         self.board = chess.Board()
         self.current_move = 0
         return self.encode_board()
