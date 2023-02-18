@@ -95,7 +95,8 @@ class DifferentiableNeuralDictionary:
 
 class Q_Memory:
     def __init__(self, q_network, actions, mem_size, key_size, k, tau, gamma):
-        # TODO move q_network here
+        self.q_network = q_network
+        self.key_size = key_size
         self.gamma = gamma
         self.memory = dict()
         self.tau = tau
@@ -105,10 +106,15 @@ class Q_Memory:
                                                                  tau=tau,
                                                                  k=k)
 
-    def get_attention(self, state, actions):
-        attention = np.array(len(actions))
-        for i, action in enumerate(actions):
-            attention[i] = self.memory[action].attend(state)
+    def get_attention(self, batch_state, batch_action):
+        attention = np.array(len(batch_action))
+        keys = self.q_network(batch_state)
+        for i, action in batch_action:
+            if keys.shape[0] > 1:
+                attention[i] = self.memory[action].attend(keys[i])
+            else:
+                attention[i] = self.memory[action].attend(keys[0])
+
         return attention
 
     def insert(self, state, action, value):
@@ -119,4 +125,5 @@ class Q_Memory:
 
 
 if __name__ == '__main__':
-    pass
+    a = np.array([1, 2, 3])
+    print(a.reshape(1, 3).shape[0])

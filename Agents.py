@@ -4,6 +4,7 @@ from Memories import Q_Memory, ReplayBuffer
 from tqdm import tqdm
 from keras.optimizers import Adam
 from keras.losses import MSE
+import tensorflow as tf
 
 
 class NeuralEpisodicControl:
@@ -114,7 +115,14 @@ class NeuralEpisodicControl:
             return
 
         batch_initial_state, batch_action, batch_reward, batch_next_state = self.get_transitions()
-        predicted_q_values = self.memory.get_attention(batch_action)
+
+        with tf.GradientTape() as tape:
+            predicted_q_values = self.memory.get_attention(batch_initial_state, batch_action)
+
+            loss_val = self.loss_fn(predicted_q_values, batch_reward)
+
+        grads = tape.gradient(loss_val, self.q_network.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads,self.q_network.trainable_weights))
 
 
 
