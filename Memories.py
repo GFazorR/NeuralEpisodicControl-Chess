@@ -1,6 +1,7 @@
 import random
 import numpy as np
 from sklearn.neighbors import KDTree
+import tensorflow as tf
 
 
 class ReplayBuffer:
@@ -41,11 +42,23 @@ class DifferentiableNeuralDictionary:
     def write(self, key, value):
         # TODO Key already exists
         # index = (self.embeddings == key).all(axis=1).nonzero()
+        if not self.is_queryable():
+            self.embeddings[self.current_size] = key
+            self.q_values[self.current_size] = value
+            self.lru[self.current_size] = self.tm
+            self.current_size += 1
+            self.tm += .01
+            if self.is_queryable():
+                self.rebuild_tree()
+            return
+
         distance = self.tree.query(key, k=1, return_distance=False)
+
         if distance < self.tau:
             if self.current_size < self.max_size:
-                self.embeddings[self.current_size + 1] = key
-                self.q_values[self.current_size + 1] = value
+                self.embeddings[self.current_size] = key
+                self.q_values[self.current_size] = value
+                self.lru[self.current_size] = self.tm
                 self.current_size += 1
             else:
                 index = np.argmin(self.lru)
@@ -93,37 +106,70 @@ class DifferentiableNeuralDictionary:
             (g_n - self.q_values[:self.current_size])
 
 
-class Q_Memory:
-    def __init__(self, q_network, actions, mem_size, key_size, k, tau, gamma):
+class NeuralEpisodicControl:
+    # TODO refactor __init__
+    def __init__(self, optimizer, q_network, loss_fn, key_size, dnd_size, batch_size=64, buffer_size=50000, k=50,
+                 **kwargs):
+        self.loss_fn = loss_fn
+        self.optimizer = optimizer
+        self.batch_size = batch_size
         self.q_network = q_network
+        self.replay_buffer = ReplayBuffer(buffer_size)
         self.key_size = key_size
-        self.gamma = gamma
+        self.gamma = kwargs['gamma']
+        self.tau = kwargs['tau']
+
         self.memory = dict()
-        self.tau = tau
+
+        with open('allmoves.txt', 'r') as f:
+            data = f.read()
+            actions = data.split('\n')
+
         for action in actions:
-            self.memory[action] = DifferentiableNeuralDictionary(size=mem_size,
-                                                                 key_size=key_size,
-                                                                 tau=tau,
+            self.memory[action] = DifferentiableNeuralDictionary(size=dnd_size,
+                                                                 key_size=self.key_size,
+                                                                 tau=self.tau,
                                                                  k=k)
 
     def get_attention(self, batch_state, batch_action):
         attention = np.array(len(batch_action))
         keys = self.q_network(batch_state)
-        for i, action in batch_action:
-            if keys.shape[0] > 1:
-                attention[i] = self.memory[action].attend(keys[i])
-            else:
+        if keys.shape[0] == 1:
+            for i, action in enumerate(batch_action):
                 attention[i] = self.memory[action].attend(keys[0])
+        else:
+            for i, action in enumerate(batch_action):
+                attention[i] = self.memory[action].attend(keys[i])
 
         return attention
 
     def insert(self, state, action, value):
-        self.memory[action].write(state, value)
+        key = self.q_network(state)
+        self.memory[action].write(key, value)
 
     def tabular_update(self, first_action, g_n):
         self.memory[first_action].tabular_update(g_n, self.gamma)
 
+    def learn(self):
+
+        if len(self.replay_buffer) < self.batch_size:
+            return
+
+        batch_initial_state, batch_action, batch_reward, batch_next_state = self.get_transitions()
+
+        with tf.GradientTape() as tape:
+            predicted_q_values = self.get_attention(batch_initial_state, batch_action)
+
+            loss_val = self.loss_fn(predicted_q_values, batch_reward)
+
+        grads = tape.gradient(loss_val, self.q_network.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.q_network.trainable_weights))
+
+    def get_transitions(self):
+        transitions = self.replay_buffer.sample(self.batch_size)
+        states, f_actions, q_values, actions = list(zip(*transitions))
+        return np.stack(states), list(f_actions), np.array(q_values), list(actions)
+
 
 if __name__ == '__main__':
-    a = np.array([1, 2, 3])
-    print(a.reshape(1, 3).shape[0])
+    pass

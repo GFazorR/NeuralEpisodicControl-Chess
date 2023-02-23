@@ -12,13 +12,11 @@ PIECE_MAP = {
 
 
 class Chess:
-    def __init__(self, player_1, player_2, max_moves=50):
+    def __init__(self, max_moves=50):
         self.board = chess.Board()
         self.pieces_map = PIECE_MAP
         self.max_moves = max_moves
         self.current_move = 0
-        self.player_1 = player_1
-        self.player_2 = player_2
 
     def step(self, move, player):
         self.board.push_san(move)
